@@ -25,12 +25,13 @@ from bcc.utils import printb
 import argparse
 from socket import inet_ntop, ntohs, AF_INET, AF_INET6
 from struct import pack
-from time import sleep
+from time import sleep,strftime
 
 # arguments
 examples = """examples:
     ./tcpconnect           # trace all TCP connect()s
     ./tcpconnect -t        # include timestamps
+    
     ./tcpconnect -p 181    # only trace PID 181
     ./tcpconnect -P 80     # only trace port 80
     ./tcpconnect -P 80,81  # only trace port 80 and 81
@@ -45,6 +46,8 @@ parser = argparse.ArgumentParser(
     epilog=examples)
 parser.add_argument("-t", "--timestamp", action="store_true",
     help="include timestamp on output")
+parser.add_argument("-T", "--tstamp", action="store_true",
+    help="include System Timestamp on output")
 parser.add_argument("-p", "--pid",
     help="trace this PID only")
 parser.add_argument("-P", "--port",
@@ -246,6 +249,8 @@ if debug or args.ebpf:
 def print_ipv4_event(cpu, data, size):
     event = b["ipv4_events"].event(data)
     global start_ts
+    if args.tstamp:
+	    print("%-8s " % strftime("%H:%M:%S"), end="")
     if args.timestamp:
         if start_ts == 0:
             start_ts = event.ts_us
@@ -260,6 +265,8 @@ def print_ipv4_event(cpu, data, size):
 def print_ipv6_event(cpu, data, size):
     event = b["ipv6_events"].event(data)
     global start_ts
+    if args.tstamp:
+	    print("%-8s " % strftime("%H:%M:%S"), end="")
     if args.timestamp:
         if start_ts == 0:
             start_ts = event.ts_us
@@ -306,6 +313,8 @@ if args.count:
 # read events
 else:
     # header
+    if args.tstamp:
+        print("%-8s " % "SYS_TIME", end="")
     if args.timestamp:
         print("%-9s" % ("TIME(s)"), end="")
     if args.print_uid:
