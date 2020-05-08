@@ -3,7 +3,7 @@
 # tcpv4tracer   Trace TCP connections.
 #               For Linux, uses BCC, eBPF. Embedded C.
 #
-# USAGE: tcpv4tracer [-h] [-v] [-p PID] [-N NETNS]
+# USAGE: tcpv4tracer [-h] [-v] [-p PID] [-N NETNS] 
 #
 # You should generally try to avoid writing long scripts that measure multiple
 # functions and walk multiple kernel structures, as they will be a burden to
@@ -11,7 +11,7 @@
 # The following code should be replaced, and simplified, when static TCP probes
 # exist.
 #
-# Copyright 2017-2020 Kinvolk GmbH
+# Copyright 2017 Kinvolk GmbH
 #
 # Licensed under the Apache License, Version 2.0 (the "License")
 from __future__ import print_function
@@ -20,17 +20,18 @@ from bcc import BPF
 import argparse as ap
 from socket import inet_ntop, AF_INET, AF_INET6
 from struct import pack
-
+from time import strftime
+from bcc.utils import printb
 parser = ap.ArgumentParser(description="Trace TCP connections",
                            formatter_class=ap.RawDescriptionHelpFormatter)
 parser.add_argument("-t", "--timestamp", action="store_true",
                     help="include timestamp on output")
+parser.add_argument("-T", "--time", action="store_true",
+    help="include time column on output (HH:MM:SS)")
 parser.add_argument("-p", "--pid", default=0, type=int,
                     help="trace this PID only")
 parser.add_argument("-N", "--netns", default=0, type=int,
                     help="trace this Network Namespace only")
-parser.add_argument("--cgroupmap",
-                    help="trace cgroups in this BPF map only")
 parser.add_argument("-v", "--verbose", action="store_true",
                     help="include Network Namespace in the output")
 parser.add_argument("--ebpf", action="store_true",
@@ -79,10 +80,6 @@ struct tcp_ipv6_event_t {
 };
 BPF_PERF_OUTPUT(tcp_ipv6_event);
 
-#if CGROUPSET
-BPF_TABLE_PINNED("hash", u64, u64, cgroupset, 1024, "CGROUPPATH");
-#endif
-
 // tcp_set_state doesn't run in the context of the process that initiated the
 // connection so we need to store a map TUPLE -> PID to send the right PID on
 // the event
@@ -122,6 +119,7 @@ static int read_ipv4_tuple(struct ipv4_tuple_t *tuple, struct sock *skp)
   u16 dport = skp->__sk_common.skc_dport;
 #ifdef CONFIG_NET_NS
   net_ns_inum = skp->__sk_common.skc_net.net->ns.inum;
+  
 #endif
 
   ##FILTER_NETNS##
@@ -179,13 +177,6 @@ static bool check_family(struct sock *sk, u16 expected_family) {
 
 int trace_connect_v4_entry(struct pt_regs *ctx, struct sock *sk)
 {
-#if CGROUPSET
-  u64 cgroupid = bpf_get_current_cgroup_id();
-  if (cgroupset.lookup(&cgroupid) == NULL) {
-      return 0;
-  }
-#endif
-
   u64 pid = bpf_get_current_pid_tgid();
 
   ##FILTER_PID##
@@ -233,12 +224,6 @@ int trace_connect_v4_return(struct pt_regs *ctx)
 
 int trace_connect_v6_entry(struct pt_regs *ctx, struct sock *sk)
 {
-#if CGROUPSET
-  u64 cgroupid = bpf_get_current_cgroup_id();
-  if (cgroupset.lookup(&cgroupid) == NULL) {
-      return 0;
-  }
-#endif
   u64 pid = bpf_get_current_pid_tgid();
 
   ##FILTER_PID##
@@ -371,13 +356,6 @@ int trace_tcp_set_state_entry(struct pt_regs *ctx, struct sock *skp, int state)
 
 int trace_close_entry(struct pt_regs *ctx, struct sock *skp)
 {
-#if CGROUPSET
-  u64 cgroupid = bpf_get_current_cgroup_id();
-  if (cgroupset.lookup(&cgroupid) == NULL) {
-      return 0;
-  }
-#endif
-
   u64 pid = bpf_get_current_pid_tgid();
 
   ##FILTER_PID##
@@ -439,13 +417,6 @@ int trace_close_entry(struct pt_regs *ctx, struct sock *skp)
 
 int trace_accept_return(struct pt_regs *ctx)
 {
-#if CGROUPSET
-  u64 cgroupid = bpf_get_current_cgroup_id();
-  if (cgroupset.lookup(&cgroupid) == NULL) {
-      return 0;
-  }
-#endif
-
   struct sock *newsk = (struct sock *)PT_REGS_RC(ctx);
   u64 pid = bpf_get_current_pid_tgid();
 
@@ -532,7 +503,8 @@ verbose_types = {"C": "connect", "A": "accept",
 def print_ipv4_event(cpu, data, size):
     event = b["tcp_ipv4_event"].event(data)
     global start_ts
-
+    if args.time:
+        printb(b"%-9s" % strftime("%H:%M:%S").encode('ascii'), nl="")
     if args.timestamp:
         if start_ts == 0:
             start_ts = event.ts_ns
@@ -553,7 +525,7 @@ def print_ipv4_event(cpu, data, size):
         print("%-12s " % (verbose_types[type_str]), end="")
     else:
         print("%-2s " % (type_str), end="")
-
+    
     print("%-6d %-16s %-2d %-16s %-16s %-6d %-6d" %
           (event.pid, event.comm.decode('utf-8', 'replace'),
            event.ip,
@@ -561,6 +533,7 @@ def print_ipv4_event(cpu, data, size):
            inet_ntop(AF_INET, pack("I", event.daddr)),
            event.sport,
            event.dport), end="")
+    
     if args.verbose and not args.netns:
         print(" %-8d" % event.netns)
     else:
@@ -570,6 +543,8 @@ def print_ipv4_event(cpu, data, size):
 def print_ipv6_event(cpu, data, size):
     event = b["tcp_ipv6_event"].event(data)
     global start_ts
+    if args.time:
+        printb(b"%-9s" % strftime("%H:%M:%S").encode('ascii'), nl="")
     if args.timestamp:
         if start_ts == 0:
             start_ts = event.ts_ns
@@ -614,11 +589,6 @@ if args.netns:
 
 bpf_text = bpf_text.replace('##FILTER_PID##', pid_filter)
 bpf_text = bpf_text.replace('##FILTER_NETNS##', netns_filter)
-if args.cgroupmap:
-    bpf_text = bpf_text.replace('CGROUPSET', '1')
-    bpf_text = bpf_text.replace('CGROUPPATH', args.cgroupmap)
-else:
-    bpf_text = bpf_text.replace('CGROUPSET', '0')
 
 if args.ebpf:
     print(bpf_text)
@@ -637,13 +607,15 @@ b.attach_kretprobe(event="inet_csk_accept", fn_name="trace_accept_return")
 print("Tracing TCP established connections. Ctrl-C to end.")
 
 # header
+if args.time:
+    print("%-9s" % ("TIME"), end="")
 if args.verbose:
     if args.timestamp:
         print("%-14s" % ("TIME(ns)"), end="")
     print("%-12s %-6s %-16s %-2s %-16s %-16s %-6s %-7s" % ("TYPE",
           "PID", "COMM", "IP", "SADDR", "DADDR", "SPORT", "DPORT"), end="")
     if not args.netns:
-        print("%-8s" % "NETNS", end="")
+        print("%-8s" % "--NETNS", end="")
     print()
 else:
     if args.timestamp:

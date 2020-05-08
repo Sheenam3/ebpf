@@ -32,6 +32,7 @@ examples = """examples:
     ./tcpaccept -P 80,81  # only trace port 80 and 81
     ./tcpaccept -p 181    # only trace PID 181
     ./tcpaccept -N NETNS  #only trace pids in the namespace
+    ./tcpaccept -T    #include system timestamps
 """
 parser = argparse.ArgumentParser(
     description="Trace TCP accepts",
@@ -223,7 +224,7 @@ def print_ipv4_event(cpu, data, size):
             start_ts = event.ts_us
         printb(b"%-9.3f" % ((float(event.ts_us) - start_ts) / 1000000), nl="")
     if args.netns:
-        print("%-8d" % event.netns)
+        print("%-16d" % event.netns, end="")
     printb(b"%-7d %-12.12s %-2d %-16s %-5d %-16s %-5d" % (event.pid,
         event.task, event.ip,
         inet_ntop(AF_INET, pack("I", event.daddr)).encode(),
@@ -241,7 +242,7 @@ def print_ipv6_event(cpu, data, size):
             start_ts = event.ts_us
         printb(b"%-9.3f" % ((float(event.ts_us) - start_ts) / 1000000), nl="")
     if args.netns:
-        print("%-8d" % event.netns)
+        print("%-16d" % event.netns, end="")
     printb(b"%-7d %-12.12s %-2d %-16s %-5d %-16s %-5d" % (event.pid,
         event.task, event.ip,
         inet_ntop(AF_INET6, event.daddr).encode(),
@@ -260,7 +261,7 @@ if args.time:
 if args.timestamp:
     print("%-9s" % ("TIME(s)"), end="")
 if args.netns:
-    print("%-8s" % ("NETNS"), end="")
+    print("%-16s" % ("NETNS"), end="")
 print("%-7s %-12s %-2s %-16s %-5s %-16s %-5s" % ("PID", "COMM", "IP", "RADDR",
     "RPORT", "LADDR", "LPORT"))
 
