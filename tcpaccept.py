@@ -223,15 +223,15 @@ def print_ipv4_event(cpu, data, size):
         if start_ts == 0:
             start_ts = event.ts_us
         printb(b"%-9.3f" % ((float(event.ts_us) - start_ts) / 1000000), nl="")
+    if args.netns:
+        print("%-16d" % event.netns, end="")
     
     printb(b"%-7d %-12.12s %-2d %-16s %-5d %-16s %-10d" % (event.pid,
         event.task, event.ip,
         inet_ntop(AF_INET, pack("I", event.daddr)).encode(),
         event.dport,
         inet_ntop(AF_INET, pack("I", event.saddr)).encode(),
-        event.lport), nl="")
-    if args.netns:
-        print("%-8d" % event.netns)
+        event.lport))
 def print_ipv6_event(cpu, data, size):
     event = b["ipv6_events"].event(data)
     global start_ts
@@ -241,16 +241,16 @@ def print_ipv6_event(cpu, data, size):
         if start_ts == 0:
             start_ts = event.ts_us
         printb(b"%-9.3f" % ((float(event.ts_us) - start_ts) / 1000000), nl="")
-    
+    if args.netns:
+        print("%-16d" % event.netns, end="")
+
     printb(b"%-7d %-12.12s %-2d %-16s %-5d %-16s %-10d" % (event.pid,
         event.task, event.ip,
         inet_ntop(AF_INET6, event.daddr).encode(),
         event.dport,
         inet_ntop(AF_INET6, event.saddr).encode(),
-        event.lport), nl="")
-    if args.netns:
-        print("%-8d" % event.netns)
-    
+        event.lport))
+ 
 
 # initialize BPF
 b = BPF(text=bpf_text)
@@ -262,11 +262,11 @@ if args.time:
 if args.timestamp:
     print("%-9s" % ("TIME(s)"), end="")
 
-print("%-7s %-12s %-2s %-16s %-5s %-16s %-10s" % ("PID", "COMM", "IP", "RADDR",
-    "RPORT", "LADDR", "LPORT"), end="")
 if args.netns:
-    print("%-8s" % ("NETNS"))
+    print("%-16s" % ("NETNS"), end="")
 
+print("%-7s %-12s %-2s %-16s %-5s %-16s %-10s" % ("PID", "COMM", "IP", "RADDR",
+    "RPORT", "LADDR", "LPORT"))
 
 
 start_ts = 0
