@@ -125,12 +125,12 @@ int syscall__execve(struct pt_regs *ctx,
     // create data here and pass to submit_arg to save stack space (#555)
     struct data_t data = {};
     struct task_struct *task;
-    struct nsproxy *nsproxy; 
-    
+    struct nsproxy *nsproxy;
+
     data.pid = bpf_get_current_pid_tgid() >> 32;
-    
+
     u32 net_ns_inum = 0;
-   
+ 
     task = (struct task_struct *)bpf_get_current_task();
     // Some kernels, like Ubuntu 4.13.0-generic, return 0
     // as the real_parent->tgid.
@@ -140,10 +140,12 @@ int syscall__execve(struct pt_regs *ctx,
     bpf_get_current_comm(&data.comm, sizeof(data.comm));
     data.type = EVENT_ARG;
     //pull in namespace id
-    net_ns_inum = task->nsproxy->net_ns->ns.inum;
+    #ifdef CONFIG_NET_NS
+    	net_ns_inum = task->nsproxy->net_ns->ns.inum;
+    #endif
     FILTER_NETNS
     data.netns  =  net_ns_inum; 
-    
+
 
     __submit_arg(ctx, (void *)filename, &data);
 
@@ -167,17 +169,19 @@ int do_ret_sys_execve(struct pt_regs *ctx)
     struct data_t data = {};
     struct task_struct *task;
     struct nsproxy *nsproxy;
-  
+
     data.pid = bpf_get_current_pid_tgid() >> 32;
     task = (struct task_struct *)bpf_get_current_task();
     // Some kernels, like Ubuntu 4.13.0-generic, return 0
     // as the real_parent->tgid.
     // We use the get_ppid function as a fallback in those cases. (#1883)
-    data.ppid = task->real_parent->tgid;  
-    //pull in namespace ID 
-    net_ns_inum = task->nsproxy->net_ns->ns.inum;
+    data.ppid = task->real_parent->tgid;
+    //pull in namespace ID
+    #ifdef CONFIG_NET_NS
+    	net_ns_inum = task->nsproxy->net_ns->ns.inum;
+    #endif
     FILTER_NETNS
-    
+
     data.netns  =  net_ns_inum; 
     bpf_get_current_comm(&data.comm, sizeof(data.comm));
     data.type = EVENT_RET;
