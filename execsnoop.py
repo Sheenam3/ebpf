@@ -116,11 +116,6 @@ static int submit_arg(struct pt_regs *ctx, void *ptr, struct data_t *data)
     return 0;
 }
 
-struct mnt_namespace {
-    struct ns_common ns;
-};
-
-
 
 int syscall__execve(struct pt_regs *ctx,
     const char __user *filename,
