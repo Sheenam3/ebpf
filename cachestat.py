@@ -13,9 +13,7 @@
 # Licensed under the Apache License, Version 2.0 (the "License")
 #
 # 09-Sep-2015   Brendan Gregg   Created this.
-# 06-Nov-2015   Allan McAleavy
-# 13-Jan-2016   Allan McAleavy  run pep8 against program
-# 02-Feb-2019   Brendan Gregg   Column shuffle, bring back %ratio
+# 21-May-2020   Sheenam Pathak        Modified to use without curse, displaying terminal output 
 
 from __future__ import print_function
 from bcc import BPF
