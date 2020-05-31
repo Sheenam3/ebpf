@@ -23,6 +23,7 @@ import argparse
 import signal
 import re
 import pwd
+from bcc.utils import printb
 from sys import argv
 from collections import defaultdict
 import subprocess
@@ -47,8 +48,10 @@ def get_meminfo():
 parser = argparse.ArgumentParser(
     description="Count cache kernel function calls",
     formatter_class=argparse.RawDescriptionHelpFormatter)
-parser.add_argument("-T", "--timestamp", action="store_true",
+parser.add_argument("-t", "--timestamp", action="store_true",
     help="include timestamp on output")
+parser.add_argument("-T", "--time", action="store_true",
+    help="include time column on output (HH:MM:SS)")
 parser.add_argument("-N", "--netns", default=0, type=int,
                     help="trace this Network Namespace only")
 parser.add_argument("interval", nargs="?", default=1,
@@ -189,8 +192,8 @@ b.attach_kprobe(event="mark_buffer_dirty", fn_name="do_count")
 
 
 # header
-if tstamp:
-    print("%-8s " % "-TIME-", end="")
+if args.time:
+    print("%-9s" % ("SYS_TIME"), end="")
 print("%6s %16s %16s %8s %8s %10s %14s %14s %5s" %
      ("PID","UID","CMD", "NETNS", "HITS", "MISSES", "DIRTIES", "READ_HIT%", "WRITE_HIT%"))
 
@@ -239,7 +242,9 @@ while 1:
 		#               (stat[0], username, stat[2], stat[3], stat[4], stat[5], stat[6], stat[7])) 	
 		#	    #printb(b"%-16d" % event.netns, nl="")
 		#        else:
-	print("%6s %16s %16s %8s %8s %8s %8s %12.0f%% %10.0f%%" %
+        if args.time:
+        	printb(b"%-9s" % strftime("%H:%M:%S").encode('ascii'), nl="")
+       	print("%6s %16s %16s %8s %8s %8s %8s %12.0f%% %10.0f%%" %
 	    (stat[0], username, stat[2], stat[3], stat[4], stat[5], stat[6], stat[7], stat[8]))
 
 		#if tstamp:

@@ -15,9 +15,10 @@
 
 from __future__ import print_function
 from bcc import BPF
+from bcc.utils import printb
 import re
 import argparse
-
+from time import strftime
 # arguments
 examples = """examples:
     ./biosnoop           # trace all block I/O
@@ -31,6 +32,8 @@ parser.add_argument("-N", "--netns", default=0, type=int,
                     help="trace this Network Namespace only")
 parser.add_argument("-Q", "--queue", action="store_true",
     help="include OS queued time")
+parser.add_argument("-T", "--time", action="store_true",
+    help="include time column on output (HH:MM:SS)")
 parser.add_argument("--ebpf", action="store_true",
     help=argparse.SUPPRESS)
 args = parser.parse_args()
@@ -195,6 +198,8 @@ b.attach_kprobe(event="blk_account_io_completion",
     fn_name="trace_req_completion")
 
 # header
+if args.time:
+    print("%-9s" % ("TIME"), end="")
 print("%-11s %-14s %-6s %-7s %-1s %-10s %-7s" % ("TIME(s)", "COMM", "PID",
     "DISK", "T", "SECTOR", "BYTES"), end="")
 if args.queue:
@@ -224,6 +229,8 @@ def print_event(cpu, data, size):
     delta = float(event.ts) - start_ts
     #print(event.pid)
     if event.pid != 0:
+        if args.time:
+        	printb(b"%-9s" % strftime("%H:%M:%S").encode('ascii'), nl="")
       	print("%-11.6f %-14.14s %-6s %-7s %-1s %-10s %-7s" % (
         	delta / 1000000, event.name.decode('utf-8', 'replace'), event.pid,
         	event.disk_name.decode('utf-8', 'replace'), rwflg, event.sector,
