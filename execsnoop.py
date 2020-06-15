@@ -93,6 +93,7 @@ struct data_t {
     u32 pid;  // PID as in the userspace term (i.e. task->tgid in kernel)
     u32 ppid; // Parent PID as in the userspace term (i.e task->real_parent->tgid in kernel)
     u32 netns;
+    u64 ts_us;	
     char comm[TASK_COMM_LEN];
     enum event_type type;
     char argv[ARGSIZE];
@@ -139,6 +140,7 @@ int syscall__execve(struct pt_regs *ctx,
     // We use the get_ppid function as a fallback in those cases. (#1883)
     //data.netns = task->nsproxy->mnt_ns->ns.inum;
     data.ppid = task->real_parent->tgid;
+    data.ts_us = bpf_ktime_get_ns() / 1000;
     bpf_get_current_comm(&data.comm, sizeof(data.comm));
     data.type = EVENT_ARG;
     //pull in namespace id
@@ -185,6 +187,7 @@ int do_ret_sys_execve(struct pt_regs *ctx)
     FILTER_NETNS
 
     data.netns  =  net_ns_inum; 
+    data.ts_us = bpf_ktime_get_ns() / 1000;
     bpf_get_current_comm(&data.comm, sizeof(data.comm));
     data.type = EVENT_RET;
     data.retval = PT_REGS_RC(ctx);
@@ -213,18 +216,22 @@ b.attach_kretprobe(event=execve_fnname, fn_name="do_ret_sys_execve")
 
 # header
 if args.time:
-    print("%-9s" % ("SYS_TIME"), end="")
+    print("%-10s" % ("SYS_TIME"), end="")
 if args.timestamp:
     print("%-8s" % ("TIME(s)"), end="")
 if args.netns:
     print("%-16s" % ("NETNS"), end="")
 print("%-16s %-6s %-6s %3s %s" % ("PCOMM", "PID", "PPID", "RET", "ARGS"))
 
+
+
+start_ts = 0
+
 class EventType(object):
     EVENT_ARG = 0
     EVENT_RET = 1
 
-start_ts = time.time()
+#start_ts = time.time()
 argv = defaultdict(list)
 
 # This is best-effort PPID matching. Short-lived processes may exit
@@ -245,7 +252,7 @@ def get_ppid(pid):
 def print_event(cpu, data, size):
     event = b["events"].event(data)
     skip = False
-    
+    global start_ts
 
     if event.type == EventType.EVENT_ARG:
         argv[event.pid].append(event.argv)
@@ -264,12 +271,14 @@ def print_event(cpu, data, size):
                 b"\"" + arg.replace(b"\"", b"\\\"") + b"\""
                 for arg in argv[event.pid]
             ]
-
+       
         if not skip:
 	    if args.time:
                 printb(b"%-9s" % strftime("%H:%M:%S").encode('ascii'), nl="")
             if args.timestamp:
-                printb(b"%-8.3f" % (time.time() - start_ts), nl="")
+		if start_ts == 0:
+            		start_ts = event.ts_us
+                printb(b"%-10.3f" % ((float(event.ts_us) - start_ts) / 1000000), nl="")
             if args.netns:
 		printb(b"%-16d" % event.netns, nl="")
             ppid = event.ppid if event.ppid > 0 else get_ppid(event.pid)
