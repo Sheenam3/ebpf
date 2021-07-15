@@ -1,5 +1,5 @@
 #!/usr/bin/python
-#This file has been modified to fetch functions present in running program/executable. 
+#This file has been modified to fetch functions present in running program/executable(running in another pod) . 
 #As currently, ebpf tools can only attach <1000 probes, 
 #if there are more than 1000 functions available in userfile then this tool can be used to retrieve funtions names defined within a provided range by the user.
 # usage getfunc  /proc/cont_pid/root/filepath:* -R 1-1000
