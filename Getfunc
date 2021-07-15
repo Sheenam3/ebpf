@@ -1,0 +1,91 @@
+#!/usr/bin/python
+#This file has been modified to fetch functions present in running program/executable. 
+#As currently, ebpf tools can only attach <1000 probes, 
+#if there are more than 1000 functions available in userfile then this tool can be used to retrieve funtions names defined within a provided range by the user.
+# usage getfunc  /proc/cont_pid/root/filepath:* -R 1-1000
+#getfunc  /proc/cont_pid/root/filepath:* -R 3-600
+from __future__ import print_function
+from bcc import ArgString, BPF
+import argparse
+
+class Probe(object):
+    def __init__(self, pattern, use_regex=False, pid=None):
+        parts = bytes(pattern).split(b':')
+        if len(parts) == 1:
+            parts = [b"p", b"", parts[0]]
+        elif len(parts) == 2:
+            parts = [b"p", parts[0], parts[1]]
+        elif len(parts) == 3:
+            if parts[0] == b"t":
+                parts = [b"t", b"", b"%s:%s" % tuple(parts[1:])]
+            if parts[0] not in [b"p", b"t", b"u"]:
+                raise Exception("Type must be 'p', 't', or 'u', but got %s" %
+                                parts[0])
+        else:
+            raise Exception("Too many ':'-separated components in pattern %s" %
+                            pattern)
+
+        (self.type, self.library, self.pattern) = parts
+        if not use_regex:
+            self.pattern = self.pattern.replace(b'*', b'.*')
+            self.pattern = b'^' + self.pattern + b'$'
+
+        if (self.type == b"p" and self.library) or self.type == b"u":
+            libpath = BPF.find_library(self.library)
+            if libpath is None:
+                # This might be an executable (e.g. 'bash')
+                libpath = BPF.find_exe(self.library)
+            if libpath is None or len(libpath) == 0:
+                raise Exception("unable to find library %s" % self.library)
+            self.library = libpath
+
+    def _generate_functions(self):
+        func_count = []
+        if self.type == b"p" and self.library:
+            # uprobes are tricky because the same function may have multiple
+            # addresses, and the same address may be mapped to multiple
+            # functions. We aren't allowed to create more than one uprobe
+            # per address, so track unique addresses and ignore functions that
+            # map to an address that we've already seen. Also ignore functions
+            # that may repeat multiple times with different addresses.
+            addresses, functions = (set(), set())
+            functions_and_addresses = BPF.get_user_functions_and_addresses(
+                self.library, self.pattern)
+            for function, address in functions_and_addresses:
+                func_count.append(function)
+
+            return func_count
+
+    def load(self):
+
+        return self._generate_functions()
+
+
+class Tool(object):
+    def __init__(self):
+        parser = argparse.ArgumentParser(
+            description="Get all function names",
+            formatter_class=argparse.RawDescriptionHelpFormatter)
+        parser.add_argument("-r", "--regexp", action="store_true",
+                            help="use regular expressions. Default is \"*\" wildcards only.")
+        parser.add_argument("pattern",
+                            type=ArgString,
+                            help="search expression for events")
+        parser.add_argument("-R", "--range", help="get functions in range")
+        self.args = parser.parse_args()
+        self.probe = Probe(self.args.pattern, self.args.regexp)
+    
+    def run(self):
+        functions = self.probe.load()
+        #print("Number of functions:",len(functions))
+        if self.args.range:
+
+            spit = str(self.args.range).split('-')
+            first =   int(spit[0]) - 1
+            last =    int(spit[1])
+            for function in range(first, last):
+                print(functions[function])
+            
+
+if __name__ == "__main__":
+    Tool().run()
