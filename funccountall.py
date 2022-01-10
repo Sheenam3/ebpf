@@ -14,6 +14,7 @@
 #
 # 09-Sep-2015   Brendan Gregg       Created this.
 # 18-Oct-2016   Sasha Goldshtein    Generalized for uprobes, tracepoints, USDT.
+# funccout all with detached probes - modified by Sheenam Pathak
 
 from __future__ import print_function
 from bcc import ArgString, BPF, USDT
@@ -24,6 +25,7 @@ import re
 import signal
 import sys
 import traceback
+from signal import signal, SIGTERM
 
 debug = False
 
@@ -36,11 +38,9 @@ def verify_limit(num):
 class Probe(object):
     def __init__(self, pattern, use_regex=False, pid=None):
         """Init a new probe.
-
         Init the probe from the pattern provided by the user. The supported
         patterns mimic the 'trace' and 'argdist' tools, but are simpler because
         we don't have to distinguish between probes and retprobes.
-
             func            -- probe a kernel function
             lib:func        -- probe a user-space function in the library 'lib'
             /path:func      -- probe a user-space function in binary '/path'
@@ -175,7 +175,6 @@ int PROBE_FUNCTION(void *ctx) {
 }
         """
         bpf_text = b"""#include <uapi/linux/ptrace.h>
-
 BPF_ARRAY(counts, u64, NUMLOCATIONS);
         """
 
@@ -256,12 +255,21 @@ class Tool(object):
     @staticmethod
     def _signal_ignore(signal, frame):
         print()
+     
+   # signal.signal(SIGTERM, signal.handler)
+
+    
+    def handler(self,signal_received, frame):
+       # Handle any cleanup here
+        self.bpf.detach_uprobe(name=self.probe.name, sym=self.probe.fname)
+        self.bpf.detach_uretprobe(name=self.probe.name, sym=self.probe.name)
+        exit()
 
     def run(self):
         self.probe.load()
         self.probe.attach()
-        print("Tracing %d functions for \"%s\"... Hit Ctrl-C to end." %
-              (self.probe.matched, bytes(self.args.pattern)))
+       # print("Tracing %d functions for \"%s\"... Hit Ctrl-C to end." %
+        #      (self.probe.matched, bytes(self.args.pattern)))
         exiting = 0 if self.args.interval else 1
         seconds = 0
         while True:
@@ -293,6 +301,7 @@ class Tool(object):
                 exit()
             else:
                 self.probe.clear()
+  
 
 if __name__ == "__main__":
     try:
