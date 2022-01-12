@@ -1,29 +1,24 @@
 #!/usr/bin/python
 #To get func count value of one function only
 #the following code provides every 1 second number count of specified function
-'''root@master:/usr/share/bcc/tools# ./functest -i 1 -s /usr/share/bcc/tools/usimex -fn goNum
+'''root@master:/usr/share/bcc/tools# ./funccount -i 1 -s /usr/share/bcc/tools/usimex -fn sayHiorHello
 FUNC                                    COUNT
-goNum                                   11280
-goNum                                    7554
-goNum                                    7533
-goNum                                   11486
-^Cuprobes before detaching: 1
-uprobes after detaching: 0 '''
-#Modified by: Sheenam 06-Jan-2022
+sayHiorHello                             7411
+sayHiorHello                             7571
+^Cdetaching probes...'''
+#Modified by: Sheenam 12-Jan-2022
 from bcc import BPF
 import argparse
 from time import sleep, strftime
 from signal import SIGINT, signal, SIGTERM
 examples = """examples:
-    ./functime           # time functime calls
-    ./functime -p 181    # only trace PID 181
+    ./funccount           # time functime calls
+    ./funccount -i 1 -s /file/path  -fn function_name  # trace function name at given path
 """
 parser = argparse.ArgumentParser(
     description="Show time for user function",
     formatter_class=argparse.RawDescriptionHelpFormatter,
     epilog=examples)
-parser.add_argument("-p", "--pid", help="trace this PID only", type=int,
-    default=-1)
 parser.add_argument("-s", "--shared", nargs="?",
         help="specify file path")
 parser.add_argument("-fn", "--fn", nargs="?",
@@ -35,8 +30,6 @@ if not args.interval:
             args.interval = 99999999
 name = args.shared if args.shared else "not valid file path"
 fname = args.fn if args.fn else "Please enter the function name"
-matched = 0
-trace_functions = {}
 t = 1
 # load BPF program
 bpf_text = b"""#include <uapi/linux/ptrace.h>
@@ -51,46 +44,32 @@ int trace_count(void *ctx) {
     return 0;
 }
 """
-if args.ebpf:
-    print(bpf_text)
-    exit()
-trace_functions[matched] = fname
+#bpf 
 b = BPF(text=bpf_text)
-b.attach_uprobe(name=name, sym=fname, fn_name="trace_count", pid=args.pid or -1)
-
+b.attach_uprobe(name=name, sym=fname, fn_name="trace_count")
+#return count data
 def counts():
         return b["counts"]
 def clear():
         counts = b["counts"]
         counts[counts.Key(0)] = counts.Leaf()
-
+#header
 print("%-36s %8s" % ("FUNC", "COUNT"))
-
+#signal handlers - SIGINT is used by ctrl+c , so it will detach probes before exiting the program    
 def handler(signal_received, frame):
     # Handle any cleanup here
+     print("detaching probes...")
      b.detach_uprobe(name=name, sym=fname)
      exit()
 
 signal(SIGINT, handler)
-
 exiting = 0
 seconds = 0
-
 while t:
-    try:
-        
-        sleep(int(args.interval))
-        seconds += int(args.interval)
-        count = counts()
-        for _, v in sorted(count.items(),
-                               key=lambda count: count[0].value):
-                print("%-36s %8d" % (fname, v.value))
-                clear()
-    
-
-
-    except KeyboardInterrupt:
-        exiting = 1
-    if exiting:
-        print("Detaching...")
-        exit()
+    sleep(int(args.interval))
+    seconds += int(args.interval)
+    count = counts()
+    for _, v in sorted(count.items(),
+                            key=lambda count: count[0].value):
+            print("%-36s %8d" % (fname, v.value))
+            clear()
